@@ -1,6 +1,6 @@
 def match_rule(request, config):
     """Match request against rules in priority order. Return dict with action and reason."""
-    rules = sorted(config.get("rules", []), key=lambda r: r["priority"])
+    rules = sorted(config.get("rules", []), key=lambda r: r.get("priority", 999))
     for rule in rules:
         pattern = rule.get("pattern", {})
         # Check tool match (exact)
