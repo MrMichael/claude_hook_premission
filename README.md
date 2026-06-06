@@ -23,7 +23,7 @@ chmod +x auto-approve-cli idle-notify auto_approve_daemon.py install.sh
 
 ## Hook 配置
 
-添加到 `~/.claude/settings.json`（省略 matcher = 匹配所有工具）：
+添加到 `~/.claude/settings.json`。将 `<INSTALL_DIR>` 替换为实际安装路径（省略 matcher = 匹配所有工具）：
 
 ```json
 {
@@ -33,7 +33,7 @@ chmod +x auto-approve-cli idle-notify auto_approve_daemon.py install.sh
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /home/michael/Documents/repository/agent_harness/hook_premission/auto-approve-cli"
+            "command": "python3 <INSTALL_DIR>/auto-approve-cli"
           }
         ]
       },
@@ -52,7 +52,7 @@ chmod +x auto-approve-cli idle-notify auto_approve_daemon.py install.sh
         "hooks": [
           {
             "type": "command",
-            "command": "/home/michael/Documents/repository/agent_harness/hook_premission/idle-notify"
+            "command": "<INSTALL_DIR>/idle-notify"
           }
         ]
       }
