@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""auto-approve-cli — PreToolUse hook client. Sends request to daemon, returns decision.
+"""auto-approve-cli — PreToolUse hook client.
 
-Claude Code passes hook info as JSON on stdin. Example:
-{"tool_name": "Bash", "tool_input": {"command": "ls"}, "permission_rationale": "..."}
+CC passes hook event as JSON on stdin. Client sends to daemon via Unix socket,
+gets decision back, outputs CC hook response JSON on stdout.
 """
 import json
 import os
@@ -16,8 +16,7 @@ TIMEOUT = 15
 
 
 def build_request():
-    """Read hook info from stdin (Claude Code passes JSON), fall back to env vars."""
-    # Try stdin first (primary channel for CC hooks)
+    """Read hook info from stdin, fall back to env vars."""
     try:
         stdin_data = sys.stdin.read()
         if stdin_data.strip():
@@ -39,20 +38,16 @@ def build_request():
     except (json.JSONDecodeError, Exception):
         pass
 
-    # Env var fallback (for testing / older CC versions)
     tool_name = os.environ.get("CLAUDE_TOOL_NAME", "Unknown")
     tool_input_str = os.environ.get("CLAUDE_TOOL_INPUT", "{}")
     rationale = os.environ.get("CLAUDE_PERMISSION_RATIONALE", "")
-
     try:
         tool_input = json.loads(tool_input_str)
     except json.JSONDecodeError:
         tool_input = {"raw": tool_input_str}
-
     command = tool_input.get("command",
                 tool_input.get("file_path",
                     tool_input.get("url", "")))
-
     return {
         "tool": tool_name,
         "command": str(command),
@@ -62,10 +57,22 @@ def build_request():
     }
 
 
+def output_cc_response(decision, reason):
+    """Output CC hook JSON on stdout — this is what CC reads."""
+    resp = {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": decision,
+            "permissionDecisionReason": reason,
+        }
+    }
+    print(json.dumps(resp))
+    sys.exit(0)
+
+
 def main():
     request = build_request()
 
-    # Dry-run mode: print JSON and exit 0 (for testing without daemon)
     if os.environ.get("AUTO_APPROVE_DRY_RUN"):
         print(json.dumps(request))
         sys.exit(0)
@@ -79,19 +86,17 @@ def main():
         f = sock.makefile("r", buffering=1)
         response_line = f.readline()
         if not response_line:
-            print("  auto-approve: no response (deny)", file=sys.stderr)
-            sys.exit(1)
+            output_cc_response("deny", "daemon not reachable")
 
         response = json.loads(response_line)
         decision = response.get("decision", "deny")
         reason = response.get("reason", "unknown")
 
-        # User-visible feedback
+        # User feedback on stderr (informational only)
         tool = request["tool"]
         cmd = str(request.get("command", ""))[:60]
         should_notify = response.get("notify", False)
-        reason = response.get("reason", "unknown")
-        status = "✅" if decision == "allow" else "❌"
+        status = "allow" if decision == "allow" else "deny"
 
         # Desktop notification — only when daemon says notify
         if should_notify and os.environ.get("DISPLAY"):
@@ -104,15 +109,15 @@ def main():
             except Exception:
                 pass
 
-        print(f"  {status} auto-approve: {tool} — {cmd} ({reason})", file=sys.stderr)
-        sys.exit(0 if decision == "allow" else 1)
+        print(f"  auto-approve [{status}]: {tool} — {cmd} ({reason})", file=sys.stderr)
+        output_cc_response(decision, reason)
 
     except (socket.timeout, ConnectionRefusedError, FileNotFoundError):
-        print(f"  ⚠️  auto-approve: daemon not reachable (deny)", file=sys.stderr)
-        sys.exit(1)
+        print("  auto-approve: daemon not reachable", file=sys.stderr)
+        output_cc_response("deny", "daemon not reachable")
     except json.JSONDecodeError:
-        print(f"  ⚠️  auto-approve: bad response (deny)", file=sys.stderr)
-        sys.exit(1)
+        print("  auto-approve: bad response", file=sys.stderr)
+        output_cc_response("deny", "invalid response from daemon")
 
 
 if __name__ == "__main__":
