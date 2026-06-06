@@ -2,14 +2,23 @@
 
 通过 Hook 自动批准 Claude Code 权限提示。危险命令弹窗确认，会话空闲弹窗提醒。
 
-## 安装
+## 一键安装（Ubuntu）
+
+```bash
+git clone <repo-url> && cd hook_premission
+./install.sh
+```
+
+五步：系统依赖 → Python 依赖 → 执行权限 → Hook 配置检测 → 启动守护进程。
+
+## 手动安装
 
 ```bash
 pip install pyyaml              # 配置解析
 sudo apt install zenity         # GUI弹窗 (Ubuntu/Debian)
 sudo apt install libnotify-bin  # 桌面通知 (可选)
 
-chmod +x auto-approve-cli idle-notify auto_approve_daemon.py
+chmod +x auto-approve-cli idle-notify auto_approve_daemon.py install.sh
 ```
 
 ## Hook 配置
@@ -52,14 +61,21 @@ chmod +x auto-approve-cli idle-notify auto_approve_daemon.py
 }
 ```
 
+**原理：** PreToolUse hook 输出 CC JSON 格式 `{"hookSpecificOutput":{"permissionDecision":"allow"}}` 到 stdout，绕过权限提示。rtk hook 在 auto-approve 之后运行，负责命令转换。
+
 ## 使用
 
 ```bash
-./auto_approve_daemon.py start       # 后台启动（持久运行）
-./auto_approve_daemon.py status      # 查看状态 + 最近审批记录
+./auto_approve_daemon.py start       # 后台启动（重复启动自动跳过）
 ./auto_approve_daemon.py stop        # 停止
+./auto_approve_daemon.py restart     # 重启（修改规则后使用）
+./auto_approve_daemon.py status      # 查看状态 + 最近 5 条审批记录
 ./auto_approve_daemon.py foreground  # 前台运行（调试用）
 ```
+
+**自动启动：** daemon 未运行时，client 自动调用 `start` 拉起，消除死锁。daemon 崩溃后下一个工具调用自动恢复。
+
+**单一实例：** `start` 检测 PID 文件，已运行则跳过，不会重复启动。
 
 ## 规则配置
 
@@ -177,8 +193,9 @@ pytest tests/ -v    # 11 tests
 
 | 文件 | 作用 |
 |------|------|
-| `auto-approve-cli` | PreToolUse hook 客户端 |
-| `auto_approve_daemon.py` | 后台守护进程（socket 服务器 + 规则引擎） |
+| `install.sh` | 一键安装脚本（Ubuntu） |
+| `auto-approve-cli` | PreToolUse hook 客户端（stdin → socket → CC JSON stdout） |
+| `auto_approve_daemon.py` | 后台守护进程（socket 服务器 + 规则引擎 + 日志） |
 | `idle-notify` | Stop hook 空闲提醒 |
 | `config.yaml` | 用户规则配置 |
 | `tests/` | pytest 测试套件 |
