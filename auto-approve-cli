@@ -9,10 +9,14 @@ import os
 import socket
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 
 SOCKET_PATH = "/tmp/claude-auto-approve.sock"
 TIMEOUT = 15
+
+DAEMON_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "auto_approve_daemon.py")
 
 
 def build_request():
@@ -58,7 +62,7 @@ def build_request():
 
 
 def output_cc_response(decision, reason):
-    """Output CC hook JSON on stdout — this is what CC reads."""
+    """Output CC hook JSON on stdout."""
     resp = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -70,6 +74,50 @@ def output_cc_response(decision, reason):
     sys.exit(0)
 
 
+def start_daemon():
+    """Try to start the daemon. Returns True on success."""
+    try:
+        subprocess.run(
+            [sys.executable, DAEMON_SCRIPT, "start"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+        time.sleep(0.5)
+        return os.path.exists(SOCKET_PATH)
+    except Exception:
+        return False
+
+
+def talk_to_daemon(request):
+    """Connect to daemon, send request, return (decision, reason, should_notify)."""
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(TIMEOUT)
+    sock.connect(SOCKET_PATH)
+    sock.sendall((json.dumps(request) + "\n").encode("utf-8"))
+    f = sock.makefile("r", buffering=1)
+    line = f.readline()
+    sock.close()
+    if not line:
+        raise ConnectionError("empty response")
+    response = json.loads(line)
+    return (response.get("decision", "deny"),
+            response.get("reason", "unknown"),
+            response.get("notify", False))
+
+
+def notify_user(tool, cmd):
+    """Desktop notification, best-effort."""
+    if os.environ.get("DISPLAY"):
+        try:
+            subprocess.Popen(
+                ["notify-send", "Claude Code Permission", f"{tool}: {cmd}",
+                 "--expire-time=1000"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
+
+
 def main():
     request = build_request()
 
@@ -77,47 +125,40 @@ def main():
         print(json.dumps(request))
         sys.exit(0)
 
+    decision = "deny"
+    reason = "error"
+    should_notify = False
+
     try:
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        sock.settimeout(TIMEOUT)
-        sock.connect(SOCKET_PATH)
-        sock.sendall((json.dumps(request) + "\n").encode("utf-8"))
-
-        f = sock.makefile("r", buffering=1)
-        response_line = f.readline()
-        if not response_line:
-            output_cc_response("deny", "daemon not reachable")
-
-        response = json.loads(response_line)
-        decision = response.get("decision", "deny")
-        reason = response.get("reason", "unknown")
-
-        # User feedback on stderr (informational only)
-        tool = request["tool"]
-        cmd = str(request.get("command", ""))[:60]
-        should_notify = response.get("notify", False)
-        status = "allow" if decision == "allow" else "deny"
-
-        # Desktop notification — only when daemon says notify
-        if should_notify and os.environ.get("DISPLAY"):
+        decision, reason, should_notify = talk_to_daemon(request)
+    except (socket.timeout, ConnectionRefusedError, FileNotFoundError, ConnectionError):
+        # Daemon not running — try to start it
+        print("  auto-approve: starting daemon...", file=sys.stderr)
+        if start_daemon():
             try:
-                subprocess.Popen(
-                    ["notify-send", "Claude Code Permission", f"{tool}: {cmd}",
-                     "--expire-time=1000"],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                )
+                decision, reason, should_notify = talk_to_daemon(request)
             except Exception:
-                pass
-
-        print(f"  auto-approve [{status}]: {tool} — {cmd} ({reason})", file=sys.stderr)
-        output_cc_response(decision, reason)
-
-    except (socket.timeout, ConnectionRefusedError, FileNotFoundError):
-        print("  auto-approve: daemon not reachable", file=sys.stderr)
-        output_cc_response("deny", "daemon not reachable")
+                print("  auto-approve: retry failed, allowing", file=sys.stderr)
+                decision = "allow"
+                reason = "daemon unreachable (fail-open)"
+        else:
+            print("  auto-approve: daemon start failed, allowing", file=sys.stderr)
+            decision = "allow"
+            reason = "daemon start failed (fail-open)"
     except json.JSONDecodeError:
-        print("  auto-approve: bad response", file=sys.stderr)
-        output_cc_response("deny", "invalid response from daemon")
+        print("  auto-approve: bad response, allowing", file=sys.stderr)
+        decision = "allow"
+        reason = "bad daemon response (fail-open)"
+
+    # Feedback
+    tool = request["tool"]
+    cmd = str(request.get("command", ""))[:60]
+    print(f"  auto-approve [{decision}]: {tool} — {cmd} ({reason})", file=sys.stderr)
+
+    if should_notify:
+        notify_user(tool, cmd)
+
+    output_cc_response(decision, reason)
 
 
 if __name__ == "__main__":
