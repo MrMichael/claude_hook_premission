@@ -1,0 +1,4 @@
+socket_path: "/tmp/claude-auto-approve.sock"
+log_path: "~/.claude/auto-approve.log"
+default_action: "allow"
+rules: []
