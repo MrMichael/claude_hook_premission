@@ -1,4 +1,71 @@
+# --- Socket & Logging ---
 socket_path: "/tmp/claude-auto-approve.sock"
 log_path: "~/.claude/auto-approve.log"
+
+# --- Default action when no rule matches ---
 default_action: "allow"
-rules: []
+
+# --- Rules: matched in priority order (lowest number = highest priority) ---
+rules:
+  - priority: 1
+    name: "destroy-system"
+    pattern:
+      tool: "Bash"
+      command_contains:
+        - "rm -rf /"
+        - "mkfs."
+        - "dd if="
+        - "> /dev/sda"
+        - ":(){ :|:& };:"
+    action: "deny"
+
+  - priority: 50
+    name: "destructive-ops"
+    pattern:
+      tool: "Bash"
+      command_contains:
+        - "rm "
+        - "rmdir"
+        - "delete"
+        - "drop "
+        - "purge"
+        - "truncate"
+        - "shred"
+    action: "prompt"
+    prompt_message: |
+      ⚠️  Destructive command detected
+
+      Command: {command}
+      Reason:  {rationale}
+
+      Allow this operation?
+
+  - priority: 80
+    name: "web-allow"
+    pattern:
+      tool: "WebFetch"
+    action: "allow"
+
+  - priority: 81
+    name: "web-search-allow"
+    pattern:
+      tool: "WebSearch"
+    action: "allow"
+
+  - priority: 82
+    name: "file-write-allow"
+    pattern:
+      tool: "Write"
+    action: "allow"
+
+  - priority: 83
+    name: "file-edit-allow"
+    pattern:
+      tool: "Edit"
+    action: "allow"
+
+  - priority: 84
+    name: "bash-allow"
+    pattern:
+      tool: "Bash"
+    action: "allow"

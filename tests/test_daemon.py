@@ -98,3 +98,37 @@ def test_daemon_uses_default_action():
     # config.yaml default_action is "allow" — so unknown tools get allowed
     assert response["decision"] == "allow"
     assert response["reason"] == "default"
+
+
+def test_full_flow_with_config():
+    """Start daemon, send requests, check rule-matched responses."""
+    proc = subprocess.Popen(
+        [sys.executable, DAEMON_PATH, "foreground", "--config", CONFIG_PATH],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    for _ in range(50):
+        if os.path.exists(SOCKET_PATH):
+            break
+        time.sleep(0.1)
+
+    # WebFetch should be auto-allowed by rule web-allow (priority 80)
+    response = send_request({
+        "tool": "WebFetch",
+        "command": "https://example.com",
+        "rationale": "fetch docs",
+    })
+    assert response["decision"] == "allow"
+    assert response["reason"] == "rule:web-allow"
+
+    # "rm -rf /etc" should be denied by destroy-system rule (priority 1)
+    response = send_request({
+        "tool": "Bash",
+        "command": "rm -rf /etc/passwd",
+        "rationale": "dangerous",
+    })
+    assert response["decision"] == "deny"
+    assert response["reason"] == "rule:destroy-system"
+
+    proc.terminate()
+    proc.wait(timeout=5)
