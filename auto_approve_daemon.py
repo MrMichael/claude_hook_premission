@@ -7,6 +7,7 @@ import signal
 import socket
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 
 DEFAULT_SOCKET_PATH = "/tmp/claude-auto-approve.sock"
@@ -248,7 +249,7 @@ def do_status():
 
 def main():
     parser = argparse.ArgumentParser(description="Claude Code Auto-Approval Daemon")
-    parser.add_argument("command", choices=["start", "stop", "status", "foreground"])
+    parser.add_argument("command", choices=["start", "stop", "status", "restart", "foreground"])
     parser.add_argument("--config", default=os.path.join(DEFAULT_CONFIG_DIR, "config.yaml"),
                         help="Path to config.yaml")
     args = parser.parse_args()
@@ -259,6 +260,10 @@ def main():
         do_stop()
     elif args.command == "status":
         do_status()
+    elif args.command == "restart":
+        do_stop()
+        time.sleep(0.3)
+        do_start(args.config)
     elif args.command == "foreground":
         run_foreground(args.config)
 
