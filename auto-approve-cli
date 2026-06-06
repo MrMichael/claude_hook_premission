@@ -24,7 +24,8 @@ def build_request():
             hook = json.loads(stdin_data)
             tool_name = hook.get("tool_name", "Unknown")
             tool_input = hook.get("tool_input", {})
-            rationale = hook.get("permission_rationale", "")
+            rationale = hook.get("permission_rationale",
+                          tool_input.get("description", ""))
             command = tool_input.get("command",
                         tool_input.get("file_path",
                             tool_input.get("url", "")))
