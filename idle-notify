@@ -1,0 +1,13 @@
+#!/bin/bash
+# idle-notify — Stop hook: show popup when Claude finishes responding
+# Fire-and-forget. Always exits 0.
+
+if command -v zenity &>/dev/null && [ -n "$DISPLAY" ]; then
+    zenity --info \
+        --text="Claude Code — 任务完成，等待输入" \
+        --title="Claude Code" \
+        --timeout=10 \
+        --width=300 \
+        2>/dev/null &
+fi
+exit 0
