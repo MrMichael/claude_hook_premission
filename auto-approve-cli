@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""auto-approve-cli — PreToolUse hook client. Sends request to daemon, returns decision."""
+import json
+import os
+import socket
+import sys
+from datetime import datetime, timezone
+
+
+SOCKET_PATH = "/tmp/claude-auto-approve.sock"
+TIMEOUT = 15
+
+
+def build_request():
+    tool_name = os.environ.get("CLAUDE_TOOL_NAME", "Unknown")
+    tool_input_str = os.environ.get("CLAUDE_TOOL_INPUT", "{}")
+    rationale = os.environ.get("CLAUDE_PERMISSION_RATIONALE", "")
+
+    try:
+        tool_input = json.loads(tool_input_str)
+    except json.JSONDecodeError:
+        tool_input = {"raw": tool_input_str}
+
+    command = tool_input.get("command",
+                tool_input.get("file_path",
+                    tool_input.get("url", "")))
+
+    return {
+        "tool": tool_name,
+        "command": str(command),
+        "tool_input": tool_input,
+        "rationale": rationale,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def main():
+    request = build_request()
+
+    # Dry-run mode: print JSON and exit 0 (for testing without daemon)
+    if os.environ.get("AUTO_APPROVE_DRY_RUN"):
+        print(json.dumps(request))
+        sys.exit(0)
+
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(TIMEOUT)
+        sock.connect(SOCKET_PATH)
+        sock.sendall((json.dumps(request) + "\n").encode("utf-8"))
+
+        f = sock.makefile("r", buffering=1)
+        response_line = f.readline()
+        if not response_line:
+            sys.exit(1)
+
+        response = json.loads(response_line)
+        decision = response.get("decision", "deny")
+        sys.exit(0 if decision == "allow" else 1)
+
+    except (socket.timeout, ConnectionRefusedError, FileNotFoundError, json.JSONDecodeError):
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
