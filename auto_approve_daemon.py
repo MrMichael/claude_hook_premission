@@ -166,7 +166,17 @@ def run_foreground(config_path):
 
 
 def do_start(config_path):
-    """Fork to background and start daemon."""
+    """Fork to background and start daemon. No-op if already running."""
+    # Check if already running
+    try:
+        with open(DEFAULT_PID_PATH) as f:
+            existing_pid = int(f.read().strip())
+        os.kill(existing_pid, 0)  # Signal 0 = check if process exists
+        print(f"Daemon already running (PID: {existing_pid})")
+        return
+    except (FileNotFoundError, ProcessLookupError, ValueError):
+        pass  # Not running, proceed
+
     pid = os.fork()
     if pid > 0:
         # Parent: write PID and exit
