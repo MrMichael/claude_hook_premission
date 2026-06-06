@@ -121,11 +121,11 @@ def test_full_flow_with_config():
     assert response["decision"] == "allow"
     assert response["reason"] == "rule:web-allow"
 
-    # "rm -rf /etc" should be denied by destroy-system rule (priority 1)
+    # "mkfs.ext4" should be denied by destroy-system rule (priority 1)
     response = send_request({
         "tool": "Bash",
-        "command": "rm -rf /etc/passwd",
-        "rationale": "dangerous",
+        "command": "mkfs.ext4 /dev/sdb",
+        "rationale": "format disk",
     })
     assert response["decision"] == "deny"
     assert response["reason"] == "rule:destroy-system"

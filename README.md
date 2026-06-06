@@ -46,10 +46,10 @@ Add to `~/.claude/settings.json`:
 ## Usage
 
 ```bash
-./auto_approve_daemon.py start     # Start daemon (persistent)
-./auto_approve_daemon.py status    # Check status + recent log
-./auto_approve_daemon.py stop      # Stop daemon
-./auto_approve_daemon.py foreground  # Run in foreground (for testing)
+python3 auto_approve_daemon.py start     # Start daemon (persistent)
+python3 auto_approve_daemon.py status    # Check status + recent log
+python3 auto_approve_daemon.py stop      # Stop daemon
+python3 auto_approve_daemon.py foreground  # Run in foreground (for testing)
 ```
 
 ## Config

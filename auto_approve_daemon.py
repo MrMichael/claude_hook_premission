@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import argparse
 import json
 import os
@@ -11,6 +12,18 @@ from datetime import datetime, timezone
 DEFAULT_SOCKET_PATH = "/tmp/claude-auto-approve.sock"
 DEFAULT_PID_PATH = "/tmp/claude-auto-approve.pid"
 DEFAULT_CONFIG_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _should_notify(config, action, decision):
+    """Determine whether to send desktop notification.
+    Based on notify_mode: silent (prompt only), verbose (all), never."""
+    mode = config.get("notify_mode", "silent")
+    if mode == "never":
+        return False
+    if mode == "verbose":
+        return True
+    # silent: notify only for prompt actions and hard denies
+    return action == "prompt" or decision == "deny"
 
 
 def match_rule(request, config):
@@ -136,6 +149,7 @@ def run_foreground(config_path):
                 "decision": decision,
                 "reason": reason,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
+                "notify": _should_notify(config, action, decision),
             }
             conn.sendall((json.dumps(response) + "\n").encode("utf-8"))
         except (json.JSONDecodeError, Exception):

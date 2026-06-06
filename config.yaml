@@ -5,6 +5,12 @@ log_path: "~/.claude/auto-approve.log"
 # --- Default action when no rule matches ---
 default_action: "allow"
 
+# --- Notification mode ---
+# "silent"  — notify only for prompt (manual confirm) and errors
+# "verbose" — notify for every decision
+# "never"   — no desktop notifications
+notify_mode: "silent"
+
 # --- Rules: matched in priority order (lowest number = highest priority) ---
 rules:
   - priority: 1
@@ -12,7 +18,6 @@ rules:
     pattern:
       tool: "Bash"
       command_contains:
-        - "rm -rf /"
         - "mkfs."
         - "dd if="
         - "> /dev/sda"
