@@ -1,13 +1,48 @@
-#!/bin/bash
-# idle-notify — Stop hook: show popup when Claude finishes responding
-# Fire-and-forget. Always exits 0.
+#!/usr/bin/env python3
+"""idle-notify — Stop hook: show popup when Claude finishes responding.
+Reads session_id from stdin hook JSON, shows shortened ID in popup.
+Fire-and-forget. Always exits 0.
+"""
+import json
+import os
+import subprocess
+import sys
 
-if command -v zenity &>/dev/null && [ -n "$DISPLAY" ]; then
-    zenity --info \
-        --text="Claude Code — 任务完成，等待输入" \
-        --title="Claude Code" \
-        --timeout=10 \
-        --width=300 \
-        2>/dev/null &
-fi
-exit 0
+
+def main():
+    session_id = ""
+    try:
+        stdin_data = sys.stdin.read()
+        if stdin_data.strip():
+            hook = json.loads(stdin_data)
+            sid = hook.get("session_id", "")
+            session_id = sid[:8] if sid else ""
+    except Exception:
+        pass
+
+    if not session_id:
+        session_id = os.environ.get("CLAUDE_CODE_SESSION_ID", "")[:8]
+
+    text = "任务完成，等待输入"
+    if session_id:
+        text += f"\n会话: {session_id}"
+
+    if os.environ.get("DISPLAY"):
+        try:
+            subprocess.Popen(
+                ["zenity", "--info",
+                 "--text", text,
+                 "--title", "Claude Code",
+                 "--timeout", "10",
+                 "--width", "300"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
