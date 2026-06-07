@@ -63,6 +63,45 @@ chmod +x auto-approve-cli idle-notify auto_approve_daemon.py install.sh
 
 **原理：** PreToolUse hook 输出 CC JSON 格式 `{"hookSpecificOutput":{"permissionDecision":"allow"}}` 到 stdout，绕过权限提示。rtk hook 在 auto-approve 之后运行，负责命令转换。
 
+## 与 Claude Code 内置权限模式的对比
+
+Claude Code 提供四种可通过 Shift+Tab 切换的权限模式：`default`、`acceptEdits`、`plan`、`auto`，外加两个 flag 模式 `dontAsk` 和 `bypassPermissions`。本项目解决的是 auto mode 和 bypassPermissions 的不足 —— 即"不想每次都点确认，但需要比全自动更细粒度的控制"。
+
+### 对比总览
+
+| 维度 | auto mode | bypassPermissions | 本项目 (hook_premission) |
+|------|-----------|-------------------|---------------------------|
+| 权限粒度 | 黑盒分类器决定，不可配置 | 全部放行 | YAML 规则引擎，按工具+命令精确匹配 |
+| 危险操作处理 | 硬阻止（rm -rf /）或软阻止 | 全部放行（仅 rm -rf / 和 ~ 阻止） | **弹 Zenity GUI 窗口，用户显式点击确认** |
+| 审计日志 | 无 | 无 | JSON 行式日志，每条决策可追溯 |
+| 可用条件 | Sonnet 4.6+ on Anthropic API | 任何模型 | **任何模型、任何 API**（包括 DeepSeek/自定义代理） |
+| 规则可配置性 | 不可配置（黑盒分类器） | 无规则 | 可编辑 config.yaml，priority 排序 |
+| 误报率 | ~8.5%（Stage 1）+ ~0.4%（Stage 2） | 0%（全放） | **0%（规则完全由用户定义）** |
+| 文件编辑盲区 | 36.8% 编辑跳过分类器 | 全部放行 | 全部经过规则引擎 |
+| 项目范围感知 | 自动检测工作区边界 | 无 | 无（可配合 CC 自带的 protected paths） |
+| 人机交互 | 连续 3 次拒绝后回退到提示 | 无 | **prompt 动作内置 GUI 弹窗** |
+| 桌面通知 | 无 | 无 | notify-send，三种模式（silent/verbose/never） |
+| 空闲提醒 | 无 | 无 | Stop hook → zenity 弹窗 "任务完成" |
+| 外部依赖 | Anthropic API | 无 | 仅 zenity + libnotify-bin |
+| 架构位置 | CC 内部，随版本变化 | CC 内部 | CC 外部（Hook），不依赖 CC 实现细节 |
+
+### bypassPermissions 的具体不足
+
+**1. 全部或全不。** 不能同时做到"放行 WebFetch、弹窗确认 git push、阻止 rm -rf /"。本项目三种动作（allow/prompt/deny）在同一套规则中共存。
+
+**2. 受保护路径仍在增加。** 从 v2.1.78 起，`.git/` 和 `.claude/` 即使在 bypass 模式下也强制提示。本项目不干预 CC 自身的 protected path 逻辑，但可以在其之上叠加你自己的规则。
+
+### 适用场景建议
+
+| 场景 | 推荐方案 |
+|------|---------|
+| 完全信任，需要最快速度 | `bypassPermissions` |
+| Sonnet 4.6+ on Anthropic，接受黑盒决策 | auto mode |
+| 需要规则可控 + 审计 + 危险操作弹窗 | **本项目** |
+| 头less/CI 环境 | 本项目 fail-open 模式 + `default_action: allow` |
+| 仅在项目内自动放行 | auto mode（有内置范围感知） |
+| 跨 API 代理使用 | **本项目**（auto mode 不可用） |
+
 ## 使用
 
 ```bash
